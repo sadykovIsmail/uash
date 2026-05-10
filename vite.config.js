@@ -126,6 +126,13 @@ function rewriteRouteLinks() {
         out = out.replace(wpDirRe, (_, dir) => `${trimmedBase}/mirror/${dir}`)
         const originRe = new RegExp(`https?:\\\\?/\\\\?/${ORIGIN_HOST}\\\\?/?`, 'g')
         out = out.replace(originRe, viteBase)
+        // Strip Elementor's lazy-load CSS that forces background-image:none
+        // on sections past the third/fourth until JS adds the .e-lazyloaded
+        // class. We want every background to show regardless of scroll state.
+        out = out.replace(
+          /<style>\s*\.e-con\.e-parent:nth-of-type[\s\S]*?<\/style>/g,
+          '',
+        )
         // Inject the gallery bootstrap right before </body> so it runs after
         // jQuery + e-gallery.min.js have loaded.
         if (out.includes('elementor-widget-gallery')) {
@@ -139,26 +146,46 @@ function rewriteRouteLinks() {
 
 let viteBase = '/'
 
-// After build, move `dist/pages/<route>/` to `dist/<route>/` so URLs match
-// the rewritten nav links (which now point at `<base><route>/`).
-function flattenPagesOutput() {
+// After build:
+// 1. Move `dist/pages/<route>/` to `dist/<route>/` so URLs match the
+//    rewritten nav links (which now point at `<base><route>/`).
+// 2. Rewrite absolute URLs inside CSS files copied from public/. Vite's
+//    base prefix doesn't touch CSS in publicDir, so post-XX.css would
+//    keep `url("/mirror/...")` and break under a non-root base like /uash/.
+function postProcessDist() {
   return {
-    name: 'flatten-pages-output',
+    name: 'post-process-dist',
     apply: 'build',
     async closeBundle() {
       const distDir = path.join(__dirname, 'dist')
       const pagesDir = path.join(distDir, 'pages')
-      let entries
       try {
-        entries = await fs.readdir(pagesDir)
+        const entries = await fs.readdir(pagesDir)
+        for (const entry of entries) {
+          await fs.rename(path.join(pagesDir, entry), path.join(distDir, entry))
+        }
+        await fs.rmdir(pagesDir)
       } catch (err) {
-        if (err.code === 'ENOENT') return
-        throw err
+        if (err.code !== 'ENOENT') throw err
       }
-      for (const entry of entries) {
-        await fs.rename(path.join(pagesDir, entry), path.join(distDir, entry))
+      if (viteBase === '/') return
+      const trimmedBase = viteBase.replace(/\/$/, '')
+      async function walk(dir) {
+        const entries = await fs.readdir(dir, { withFileTypes: true })
+        for (const entry of entries) {
+          const full = path.join(dir, entry.name)
+          if (entry.isDirectory()) {
+            await walk(full)
+          } else if (entry.isFile() && entry.name.endsWith('.css')) {
+            const orig = await fs.readFile(full, 'utf8')
+            const next = orig
+              .replace(/url\((['"]?)\/(mirror|images)\//g, (_, q, root) => `url(${q}${trimmedBase}/${root}/`)
+              .replace(/https?:\/\/uzbekamericansh\.org/g, trimmedBase)
+            if (next !== orig) await fs.writeFile(full, next, 'utf8')
+          }
+        }
       }
-      await fs.rmdir(pagesDir)
+      await walk(distDir)
     },
   }
 }
@@ -171,7 +198,7 @@ export default defineConfig(({ command }) => {
       react(),
       devRouteAliases(),
       rewriteRouteLinks(),
-      flattenPagesOutput(),
+      postProcessDist(),
     ],
     build: {
       rollupOptions: {
