@@ -50,8 +50,52 @@ function devRouteAliases() {
   }
 }
 
+const ORIGIN_HOST = 'uzbekamericansh.org'
+
+const galleryBootstrapScript = `
+<script>
+(function () {
+  function init() {
+    if (typeof jQuery === 'undefined' || typeof EGallery === 'undefined') {
+      return setTimeout(init, 30)
+    }
+    var Ctor = EGallery.default || EGallery
+    document.querySelectorAll('.elementor-widget-gallery').forEach(function (widget) {
+      var $container = jQuery(widget).find('.elementor-gallery__container')
+      if (!$container.length || $container.data('eGalleryInit')) return
+      $container.data('eGalleryInit', true)
+      var s = {}
+      try { s = JSON.parse(widget.getAttribute('data-settings') || '{}') } catch (e) {}
+      var gap = (s.gap && s.gap.size) || 10
+      var rowH = (s.ideal_row_height && s.ideal_row_height.size) || 200
+      var rowHTablet = (s.ideal_row_height_tablet && s.ideal_row_height_tablet.size) || 150
+      var rowHMobile = (s.ideal_row_height_mobile && s.ideal_row_height_mobile.size) || 150
+      new Ctor({
+        container: $container,
+        type: s.gallery_layout || 'justified',
+        idealRowHeight: rowH,
+        horizontalGap: gap,
+        verticalGap: gap,
+        lazyLoad: s.lazyload === 'yes',
+        breakpoints: {
+          1024: { idealRowHeight: rowHTablet, horizontalGap: gap, verticalGap: gap },
+          768: { idealRowHeight: rowHMobile, horizontalGap: gap, verticalGap: gap },
+        },
+      })
+    })
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init)
+  } else {
+    init()
+  }
+})()
+</script>`
+
 // Rewrite root-absolute nav links like `/about-us/` to use the configured base
 // (e.g. `/uash/about-us/`), so the same source HTML works for any deploy prefix.
+// Also strips runtime references to the original WordPress origin so the site
+// is fully self-contained.
 function rewriteRouteLinks() {
   return {
     name: 'rewrite-route-links',
@@ -74,6 +118,37 @@ function rewriteRouteLinks() {
           /url\(\/(mirror|images)\//g,
           (_, root) => `url(${viteBase}${root}/`,
         )
+        // Replace every reference to the original WP origin in inline configs
+        // (Elementor's urls.assets, uploadUrl, ajaxurl, rest, lottie url, etc.)
+        // with the local mirror, so no JS chunk or fetch leaves our domain.
+        const originPatterns = [
+          new RegExp(`https:\\\\?/\\\\?/${ORIGIN_HOST}\\\\?/wp-content`, 'g'),
+          new RegExp(`https://${ORIGIN_HOST}/wp-content`, 'g'),
+        ]
+        for (const re of originPatterns) {
+          out = out.replace(re, `${viteBase.replace(/\/$/, '')}/mirror/wp-content`)
+        }
+        out = out.replace(
+          new RegExp(`https:\\\\?/\\\\?/${ORIGIN_HOST}\\\\?/wp-json`, 'g'),
+          `${viteBase.replace(/\/$/, '')}/mirror/wp-json`,
+        )
+        out = out.replace(
+          new RegExp(`https://${ORIGIN_HOST}/wp-json`, 'g'),
+          `${viteBase.replace(/\/$/, '')}/mirror/wp-json`,
+        )
+        out = out.replace(
+          new RegExp(`https:\\\\?/\\\\?/${ORIGIN_HOST}\\\\?/wp-admin\\\\?/admin-ajax\\.php`, 'g'),
+          `${viteBase.replace(/\/$/, '')}/mirror/wp-admin/admin-ajax.php`,
+        )
+        out = out.replace(
+          new RegExp(`https://${ORIGIN_HOST}/wp-admin/admin-ajax\\.php`, 'g'),
+          `${viteBase.replace(/\/$/, '')}/mirror/wp-admin/admin-ajax.php`,
+        )
+        // Inject the gallery bootstrap right before </body> so it runs after
+        // jQuery + e-gallery.min.js have loaded.
+        if (out.includes('elementor-widget-gallery')) {
+          out = out.replace(/<\/body>/i, `${galleryBootstrapScript}\n</body>`)
+        }
         return out
       },
     },
