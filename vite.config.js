@@ -118,32 +118,14 @@ function rewriteRouteLinks() {
           /url\(\/(mirror|images)\//g,
           (_, root) => `url(${viteBase}${root}/`,
         )
-        // Replace every reference to the original WP origin in inline configs
-        // (Elementor's urls.assets, uploadUrl, ajaxurl, rest, lottie url, etc.)
-        // with the local mirror, so no JS chunk or fetch leaves our domain.
-        const originPatterns = [
-          new RegExp(`https:\\\\?/\\\\?/${ORIGIN_HOST}\\\\?/wp-content`, 'g'),
-          new RegExp(`https://${ORIGIN_HOST}/wp-content`, 'g'),
-        ]
-        for (const re of originPatterns) {
-          out = out.replace(re, `${viteBase.replace(/\/$/, '')}/mirror/wp-content`)
-        }
-        out = out.replace(
-          new RegExp(`https:\\\\?/\\\\?/${ORIGIN_HOST}\\\\?/wp-json`, 'g'),
-          `${viteBase.replace(/\/$/, '')}/mirror/wp-json`,
-        )
-        out = out.replace(
-          new RegExp(`https://${ORIGIN_HOST}/wp-json`, 'g'),
-          `${viteBase.replace(/\/$/, '')}/mirror/wp-json`,
-        )
-        out = out.replace(
-          new RegExp(`https:\\\\?/\\\\?/${ORIGIN_HOST}\\\\?/wp-admin\\\\?/admin-ajax\\.php`, 'g'),
-          `${viteBase.replace(/\/$/, '')}/mirror/wp-admin/admin-ajax.php`,
-        )
-        out = out.replace(
-          new RegExp(`https://${ORIGIN_HOST}/wp-admin/admin-ajax\\.php`, 'g'),
-          `${viteBase.replace(/\/$/, '')}/mirror/wp-admin/admin-ajax.php`,
-        )
+        // Localize every reference to the original WP origin so the site
+        // makes zero requests to it and clicking a link never leaves the
+        // local domain. Order: specific (wp-*) before generic.
+        const trimmedBase = viteBase.replace(/\/$/, '')
+        const wpDirRe = new RegExp(`https?:\\\\?/\\\\?/${ORIGIN_HOST}\\\\?/(wp-[a-z]+)`, 'g')
+        out = out.replace(wpDirRe, (_, dir) => `${trimmedBase}/mirror/${dir}`)
+        const originRe = new RegExp(`https?:\\\\?/\\\\?/${ORIGIN_HOST}\\\\?/?`, 'g')
+        out = out.replace(originRe, viteBase)
         // Inject the gallery bootstrap right before </body> so it runs after
         // jQuery + e-gallery.min.js have loaded.
         if (out.includes('elementor-widget-gallery')) {
