@@ -63,6 +63,17 @@ function rewriteRouteLinks() {
           const pattern = new RegExp(`(href|action)="/${route}/?"`, 'g')
           out = out.replace(pattern, (_, attr) => `${attr}="${viteBase}${route}/"`)
         }
+        // Vite only base-prefixes href/src/srcset. Elementor stashes image URLs
+        // in data-thumbnail and inline style="...url(/...)" — rewrite both so
+        // they resolve under the configured base.
+        out = out.replace(
+          /data-thumbnail="\/(mirror|images)\//g,
+          (_, root) => `data-thumbnail="${viteBase}${root}/`,
+        )
+        out = out.replace(
+          /url\(\/(mirror|images)\//g,
+          (_, root) => `url(${viteBase}${root}/`,
+        )
         return out
       },
     },
