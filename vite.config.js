@@ -52,13 +52,11 @@ function devRouteAliases() {
 
 const ORIGIN_HOST = 'uzbekamericansh.org'
 
-const galleryBootstrapScript = `
+const widgetBootstrapScript = `
 <script>
 (function () {
-  function init() {
-    if (typeof jQuery === 'undefined' || typeof EGallery === 'undefined') {
-      return setTimeout(init, 30)
-    }
+  function initGalleries() {
+    if (typeof jQuery === 'undefined' || typeof EGallery === 'undefined') return false
     var Ctor = EGallery.default || EGallery
     document.querySelectorAll('.elementor-widget-gallery').forEach(function (widget) {
       var $container = jQuery(widget).find('.elementor-gallery__container')
@@ -83,6 +81,45 @@ const galleryBootstrapScript = `
         },
       })
     })
+    return true
+  }
+  function initSlideshows() {
+    document.querySelectorAll('[data-settings]').forEach(function (el) {
+      if (el.dataset._slideshowInit) return
+      var s = {}
+      try { s = JSON.parse(el.getAttribute('data-settings')) } catch (e) { return }
+      if (s.background_background !== 'slideshow') return
+      var gallery = s.background_slideshow_gallery || []
+      if (!gallery.length) return
+      el.dataset._slideshowInit = '1'
+      var duration = s.background_slideshow_slide_duration || 5000
+      var transitionMs = s.background_slideshow_transition_duration || 500
+      var slideshow = document.createElement('div')
+      slideshow.className = 'elementor-background-slideshow'
+      slideshow.style.cssText = 'position:absolute;inset:0;z-index:0;overflow:hidden;'
+      gallery.forEach(function (item, i) {
+        var slide = document.createElement('div')
+        slide.className = 'elementor-background-slideshow__slide'
+        slide.style.cssText = 'position:absolute;inset:0;background-image:url("' + item.url + '");background-position:center;background-size:cover;background-repeat:no-repeat;opacity:' + (i === 0 ? 1 : 0) + ';transition:opacity ' + transitionMs + 'ms ease-in-out;'
+        slideshow.appendChild(slide)
+      })
+      var cs = getComputedStyle(el)
+      if (cs.position === 'static') el.style.position = 'relative'
+      el.insertBefore(slideshow, el.firstChild)
+      if (gallery.length > 1) {
+        var current = 0
+        setInterval(function () {
+          var next = (current + 1) % gallery.length
+          slideshow.children[current].style.opacity = '0'
+          slideshow.children[next].style.opacity = '1'
+          current = next
+        }, duration)
+      }
+    })
+  }
+  function init() {
+    initSlideshows()
+    if (!initGalleries()) setTimeout(init, 30)
   }
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init)
@@ -118,6 +155,17 @@ function rewriteRouteLinks() {
           /url\(\/(mirror|images)\//g,
           (_, root) => `url(${viteBase}${root}/`,
         )
+        // JSON-escaped paths inside data-settings attributes
+        // (e.g. background_slideshow_gallery URLs) — Vite's base prefixer
+        // doesn't reach inside encoded JSON strings.
+        const trimmed = viteBase.replace(/\/$/, '')
+        if (trimmed) {
+          const encBase = trimmed.replace(/\//g, '\\/')
+          out = out.replace(
+            /\\\/(images|mirror)\\\//g,
+            (_, root) => `${encBase}\\/${root}\\/`,
+          )
+        }
         // Localize every reference to the original WP origin so the site
         // makes zero requests to it and clicking a link never leaves the
         // local domain. Order: specific (wp-*) before generic.
@@ -133,10 +181,12 @@ function rewriteRouteLinks() {
           /<style>\s*\.e-con\.e-parent:nth-of-type[\s\S]*?<\/style>/g,
           '',
         )
-        // Inject the gallery bootstrap right before </body> so it runs after
-        // jQuery + e-gallery.min.js have loaded.
-        if (out.includes('elementor-widget-gallery')) {
-          out = out.replace(/<\/body>/i, `${galleryBootstrapScript}\n</body>`)
+        // Inject our widget bootstrap right before </body>. It initializes
+        // the gallery (waits for jQuery + EGallery) and any background
+        // slideshow containers — both ship in webpack chunks the original
+        // mirror didn't include, so we drive them ourselves.
+        if (out.includes('elementor-widget-gallery') || out.includes('"background_background":"slideshow"') || out.includes('background_background&quot;:&quot;slideshow')) {
+          out = out.replace(/<\/body>/i, `${widgetBootstrapScript}\n</body>`)
         }
         return out
       },
