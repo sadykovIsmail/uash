@@ -58,6 +58,7 @@ function rootRouteAliases() {
 }
 
 export default defineConfig({
+  base: process.env.VITE_BASE ?? '/',
   plugins: [react(), rootRouteAliases()],
   build: {
     rollupOptions: {
