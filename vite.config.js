@@ -1,4 +1,4 @@
-import fs from 'node:fs/promises'
+﻿import fs from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
@@ -11,6 +11,7 @@ const STATIC_ROUTES = [
   'become-a-member',
   'contact-us',
   'discover-uzbekistan',
+  'fifa-2026',
   'gallery',
   'membership',
   'program-and-events',
@@ -145,7 +146,7 @@ function rewriteRouteLinks() {
           out = out.replace(pattern, (_, attr) => `${attr}="${viteBase}${route}/"`)
         }
         // Vite only base-prefixes href/src/srcset. Elementor stashes image URLs
-        // in data-thumbnail and inline style="...url(/...)" — rewrite both so
+        // in data-thumbnail and inline style="...url(/...)" â€” rewrite both so
         // they resolve under the configured base.
         out = out.replace(
           /data-thumbnail="\/(mirror|images)\//g,
@@ -156,7 +157,7 @@ function rewriteRouteLinks() {
           (_, root) => `url(${viteBase}${root}/`,
         )
         // JSON-escaped paths inside data-settings attributes
-        // (e.g. background_slideshow_gallery URLs) — Vite's base prefixer
+        // (e.g. background_slideshow_gallery URLs) â€” Vite's base prefixer
         // doesn't reach inside encoded JSON strings.
         const trimmed = viteBase.replace(/\/$/, '')
         if (trimmed) {
@@ -183,7 +184,7 @@ function rewriteRouteLinks() {
         )
         // Inject our widget bootstrap right before </body>. It initializes
         // the gallery (waits for jQuery + EGallery) and any background
-        // slideshow containers — both ship in webpack chunks the original
+        // slideshow containers â€” both ship in webpack chunks the original
         // mirror didn't include, so we drive them ourselves.
         if (out.includes('elementor-widget-gallery') || out.includes('"background_background":"slideshow"') || out.includes('background_background&quot;:&quot;slideshow')) {
           out = out.replace(/<\/body>/i, `${widgetBootstrapScript}\n</body>`)
@@ -257,3 +258,4 @@ export default defineConfig(({ command }) => {
     },
   }
 })
+

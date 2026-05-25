@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "sync:wordpress": "node scripts/mirror-wordpress.mjs",
+    "sync:backup": "node scripts/sync-from-backup.mjs",
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview"
